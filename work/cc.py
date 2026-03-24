@@ -118,137 +118,140 @@ def get_unique_repo_dir(repo_url):
     return safe_path
 
 
-# def code_sync(mr_info_list, fallback_branch="8295_master"):
-#     print("======================begin git merge ======================")
-#     if not os.path.exists(WORK_DIR):
-#         os.makedirs(WORK_DIR)
-#     # else:
-#     #    shutil.rmtree(WORK_DIR)
-#     #    os.makedirs(WORK_DIR)
-
-#     for repo_url, mr_list in mr_info_list.items():
-#         # 使用哈希命名，避免同名仓库冲突
-#         repo_dir = get_unique_repo_dir(repo_url)
-#         local_path = os.path.join(WORK_DIR, repo_dir)
-#         # print(f"仓库：{repo_name} 有 {len(mr_list)} 个 MR")
-
-#         web_url = mr_list[0]["web_url"]
-#         source_branch = mr_list[0]["source_branch"]
-#         base_branch = mr_list[0]["target_branch"]
-#         repo_display_name = repo_url.rstrip('/').split('/')[-1]
-#         print(f"处理仓库：{repo_display_name}（本地路径：{repo_dir}）")
-#         if os.path.exists(local_path):
-#             # 如果本地有代码，则删除
-#             # shutil.rmtree(local_path)
-#             os.chdir(local_path)
-#             run_cmd(f'git fetch origin')
-#             run_cmd(f'git reset --hard origin/{fallback_branch}')
-#             os.chdir(root_path)
-#         else:
-#             print("Init clone repos")
-#             # 克隆仓库
-#             clone_cmd = f'git clone -b {base_branch} {repo_url}.git {local_path}'
-#             result = run_cmd(clone_cmd)
-#             if result.returncode != 0:
-#                 print(f"❌ 克隆仓库失败：{repo_url}")
-#                 continue  # clone失败则跳
-
-#         if len(mr_list) <= 1:
-#             print(f"仓库：{repo_url} 有 {len(mr_list)} 个 MR")
-#             os.chdir(local_path)
-#             # TODO 合并到主分支，看是否和主分支存在冲突
-#             check_conflict_with_master(mr_list, fallback_branch)
-#             os.chdir(root_path)
-#             # continue
-          
-#         print(f"仓库：{repo_dir} 有 {len(mr_list)} 个 MR")
-
-#         # 两两merge进行冲突检测，检查MR与MR之间的冲突
-#         # 这里一定要进到每个仓库里面
-#         os.chdir(local_path)
-#         check_conflict(mr_list, fallback_branch)
-#         os.chdir(root_path)
-
 def code_sync(mr_info_list, fallback_branch="8295_master"):
+    """代码同步主函数"""
     print("====================== begin git merge ======================")
     
     if not os.path.exists(WORK_DIR):
         os.makedirs(WORK_DIR)
 
     for repo_url, mr_list in mr_info_list.items():
+        if not mr_list:
+            print(f"⚠️ 仓库 {repo_url} 没有 MR 信息，跳过")
+            continue
+            
         repo_dir = get_unique_repo_dir(repo_url)
         local_path = os.path.join(WORK_DIR, repo_dir)
-
-        web_url = mr_list[0]["web_url"]
-        source_branch = mr_list[0]["source_branch"]
+        
+        # 获取基础信息
         base_branch = mr_list[0]["target_branch"]
-
-        # print(f"处理仓库：{repo_url}（本地路径：{repo_dir}）")
-
-        if os.path.exists(local_path):
+        
+        # 初始化或更新仓库
+        if not init_or_update_repo(repo_url, local_path, base_branch, fallback_branch):
+            continue
+        
+        print(f"\n📦 处理仓库：{repo_url}（共 {len(mr_list)} 个 MR）")
+        
+        # 步骤1: 检查所有MR与主分支的冲突
+        os.chdir(local_path)
+        mrs_conflict_with_master = check_all_mrs_with_master(mr_list, fallback_branch)
+        os.chdir(root_path)
+        
+        if mrs_conflict_with_master:
+            print(f"❌ 以下 MR 与主分支存在冲突，请先解决：")
+            for mr_url in mrs_conflict_with_master:
+                print(f"   - {mr_url}")
+            continue
+        
+        # 步骤2: 检查MR之间的冲突
+        if len(mr_list) > 1:
+            print(f"🔍 检查 {len(mr_list)} 个 MR 之间的冲突...")
             os.chdir(local_path)
-            run_cmd(f'git fetch origin')
-            run_cmd(f'git reset --hard origin/{fallback_branch}')
+            check_conflict(mr_list, fallback_branch)
             os.chdir(root_path)
         else:
-            print(f"初始化克隆仓库 {repo_url}")
-            clone_cmd = f'git clone -b {base_branch} {repo_url}.git {local_path}'
-            result = run_cmd(clone_cmd)
-            if result.returncode != 0:
-                print(f"❌ 克隆仓库失败：{repo_url}")
-                continue
-
-        if len(mr_list) <= 1:
-            # print(f"仓库：{repo_url} 只有 {len(mr_list)} 个 MR，检测与主分支冲突...")
-            os.chdir(local_path)
-            check_conflict_with_master(mr_list, fallback_branch)
-            os.chdir(root_path)
-            continue
-
-        print(f"仓库：{repo_url} 有 {len(mr_list)} 个 MR，检测 MR 之间冲突...")
-        os.chdir(local_path)
-        check_conflict(mr_list, fallback_branch)
-        os.chdir(root_path)
+            print(f"✅ 只有单个 MR，跳过 MR 间冲突检查")
 
     print("====================== git merge end ======================")
 
 
-def check_conflict_with_master(mr_list, fallback_branch):
-    cmd1 = f'git checkout -b {fallback_branch} origin/{fallback_branch}'
-    result = run_cmd(cmd1)
-
-    for mr in mr_list:
-        source_branch = mr.get("source_branch")
-        web_url = mr.get("web_url")
-        # print("-"*100)
-        # print(source_branch)
-        # print("-"*100)
-        # 和 master 分支进行 merge
-        res = run_cmd(f"git merge origin/{source_branch} --allow-unrelated-histories --no-edit")
-        if res.returncode != 0:
-            print("-"*100)
-            print("\033[1;31m🔥和master merge有冲突：\033[0m",web_url)
-            print("-"*100)
-            run_cmd(f"git merge --abort")
-            run_cmd(f"git reset --hard origin/{fallback_branch}")
+def init_or_update_repo(repo_url, local_path, base_branch, fallback_branch):
+    """初始化或更新仓库，返回是否成功"""
+    try:
+        if os.path.exists(local_path):
+            os.chdir(local_path)
+            run_cmd('git fetch origin')
+            run_cmd(f'git reset --hard origin/{fallback_branch}')
+            return True
         else:
-            print("✅和 8295_master 合并成功！")
+            print(f"📥 初始化克隆仓库 {repo_url}")
+            clone_cmd = f'git clone -b {base_branch} {repo_url}.git {local_path}'
+            result = run_cmd(clone_cmd)
+            if result.returncode != 0:
+                print(f"❌ 克隆仓库失败：{repo_url}")
+                return False
+            return True
+    except Exception as e:
+        print(f"❌ 仓库初始化失败 {repo_url}: {e}")
+        return False
+    finally:
+        if 'root_path' in globals():
+            os.chdir(root_path)
+
+
+def check_all_mrs_with_master(mr_list, fallback_branch):
+    """检查所有MR与主分支的冲突，返回存在冲突的MR URL列表"""
+    conflicts = []
+    
+    try:
+        # 确保在主分支上
+        run_cmd(f'git checkout -b {fallback_branch} origin/{fallback_branch}')
+        
+        for mr in mr_list:
+            source_branch = mr.get("source_branch")
+            web_url = mr.get("web_url")
+            
+            print(f"检查 MR: {source_branch}")
+            
+            # 尝试合并到主分支
+            res = run_cmd(f"git merge origin/{source_branch} --allow-unrelated-histories --no-edit")
+            
+            if res.returncode != 0:
+                conflicts.append(web_url)
+                print(f"🔥 与主分支冲突")
+                # 中止合并，回退到干净状态
+                run_cmd("git merge --abort")
+                run_cmd(f"git reset --hard origin/{fallback_branch}")
+            else:
+                print(f"✅ 与主分支无冲突")
+                # 重置到主分支，为下一个MR做准备
+                run_cmd(f"git reset --hard origin/{fallback_branch}")
+        
+        return conflicts
+        
+    except Exception as e:
+        print(f"❌ 检查 MR 与主分支冲突时出错: {e}")
+        return conflicts
         
 
-def has_file_overlap(branch1, branch2):
-    # 对比两个远程分支修改的文件
-    cmd1 = f"git diff --name-only origin/{branch1} origin/8295_master"
-    cmd2 = f"git diff --name-only origin/{branch2} origin/8295_master"
-    #print(cmd1,cmd2)
-    # 比较两个分支修改的文件是否有交集
-    files1 = run_cmd(cmd1).stdout.strip().splitlines()
-    files2 = run_cmd(cmd2).stdout.strip().splitlines()
-    return bool(set(files1) & set(files2))
+def get_modified_files(branch, base_branch="8295_master"):
+    """获取分支相对于基准分支修改的文件列表"""
+    cmd = f"git diff --name-only origin/{branch} origin/{base_branch}"
+    result = run_cmd(cmd)
+    if result.returncode != 0:
+        return set()
+    return set(result.stdout.strip().splitlines()) if result.stdout else set()
+
+
+def has_file_overlap(branch1, branch2, base_branch="8295_master"):
+    """检查两个分支是否有文件重叠"""
+    files1 = get_modified_files(branch1, base_branch)
+    files2 = get_modified_files(branch2, base_branch)
+    overlap = files1 & files2
+    
+    if overlap:
+        print(f"📝 重叠文件数: {len(overlap)}")
+        if len(overlap) <= 5:
+            print(f"   文件列表: {', '.join(overlap)}")
+        else:
+            print(f"   文件列表(前5个): {', '.join(list(overlap)[:5])}...")
+    
+    return bool(overlap)
 
 
 def check_conflict(mr_list, fallback_branch):
     if len(mr_list) <= 1:
-        check_conflict_with_master(mr_list, fallback_branch)
+        # check_conflict_with_master(mr_list, fallback_branch)
         return 0
     for index,a_mr_info in enumerate(mr_list):
         # 自己和自己merge
