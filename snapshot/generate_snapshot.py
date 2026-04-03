@@ -47,8 +47,8 @@ def update_manifest_revisions(manifest_path, branch, output_file, parent_fetch=N
         if not repo_name:
             continue
 
-        if repo_name == "apricot-android-mb/tools/app_tool":
-            repo_url = "https://git.sb.com/apricot-android-mb/tools/app_tool.git"
+        if repo_name == "sb/tools/app_tool":
+            repo_url = "https://git.sb.com/sb/tools/app_tool.git"
             print(f"[INFO] Processing {repo_name} -> {repo_url}")
             latest_hash = get_latest_commit_hash(repo_url, branch)
             project.set("revision", latest_hash)
@@ -134,7 +134,7 @@ def main():
         shutil.rmtree(repos_dir)
     os.makedirs(repos_dir)
 
-    android_manifest = "https://git.sb.com/apricot-android-mb/manifest.git"
+    android_manifest = "https://git.sb.com/sb/manifest.git"
     qnx_manifest = "https://git.sb.com/sb/apricotqal/apricotqal-qnx-manifests.git"
     nonhlos_manifest = "https://git.sb.com/apricot-nonhlos-mb/apricotqal/nonhlos-manifests.git"
     repo_url = "https://git.sb.com/apricot/git-repo-mirror.git"
