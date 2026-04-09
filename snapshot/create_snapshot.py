@@ -26,26 +26,6 @@ def get_latest_commit_hash(repo_url, branch):
     output = run_command(f"git ls-remote {repo_url} refs/heads/{branch}")
     return output.split()[0]
 
-# def get_latest_commit_hash(repo_url, branch):
-#     """Return tag hash if exists, otherwise branch hash."""
-
-#     tag_ref = "refs/heads/E247.0-6.6-895743-alpha"
-
-#     # 1. try tag first
-#     tag_output = run_command(f"git ls-remote {repo_url} {tag_ref}").strip()
-#     if tag_output:
-#         print("\033[1;32m 根据TAG来获取hash值 \033[0m") 
-#         return tag_output.split()[0]
-
-#     # 2. fallback to branch
-#     branch_ref = f"refs/heads/{branch}"
-#     branch_output = run_command(f"git ls-remote {repo_url} {branch_ref}").strip()
-#     if branch_output:
-#         return branch_output.split()[0]
-
-#     raise RuntimeError(f"Cannot find tag or branch: {tag_ref}, {branch_ref}")
-
-
 def get_latest_commit_hash_safe(repo_url, branch):
     """Wrapper to safely get commit hash (returns None on failure)."""
     try:
@@ -100,7 +80,7 @@ def update_manifest_revisions(manifest_path, branch):
 
             # 特殊 QSSI case
             if repo_name == "vendor/qcom/proprietary" and "qssi" in manifest_path.lower():
-                special_ref = "8295_master_qssi"
+                special_ref = "{branch}_qssi"
                 futures[executor.submit(get_latest_commit_hash_safe, repo_url, special_ref)] = (
                     project, repo_name, repo_url, special_ref, True)
             else:
@@ -190,9 +170,9 @@ def main():
     repo_rev = "v2.31"
 
     # Prepare all repos
-    prepare_and_update_repo("vendor", aosp_manifest, "8295_master_vendor.xml", branch, repo_url, repo_rev, root_dir)
-    prepare_and_update_repo("qssi", aosp_manifest, "8295_master_qssi.xml", branch, repo_url, repo_rev, root_dir)
-    prepare_and_update_repo("qnx", qnx_manifest, "8295_master.xml", branch, repo_url, repo_rev, root_dir)
+    prepare_and_update_repo("vendor", aosp_manifest, "{branch}_vendor.xml", branch, repo_url, repo_rev, root_dir)
+    prepare_and_update_repo("qssi", aosp_manifest, "{branch}_qssi.xml", branch, repo_url, repo_rev, root_dir)
+    prepare_and_update_repo("qnx", qnx_manifest, "{branch}.xml", branch, repo_url, repo_rev, root_dir)
     get_amss_log(amss_repo, branch, root_dir, save_file="amss_manifest.xml")
 
     print("[SUCCESS] All manifests updated successfully.")
