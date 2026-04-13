@@ -175,17 +175,19 @@ def code_sync(mr_info_list, main_branch):
                 print(f"❌ 克隆仓库失败：{repo_url}")
                 continue
 
-        if len(mr_list) <= 1:
-            # print(f"仓库：{repo_url} 只有 {len(mr_list)} 个 MR，检测与主分支冲突...")
-            os.chdir(local_path)
-            check_conflict_with_master(mr_list, main_branch)
-            os.chdir(root_path)
-            continue
-
-        print(f"仓库：{repo_url} 有 {len(mr_list)} 个 MR，检测 MR 之间冲突...")
+        print(f"仓库：{repo_url} 开始检测 MR 与 {base_branch} 的冲突...")
         os.chdir(local_path)
-        check_conflict(mr_list, main_branch)
+        for mr in mr_list:
+            print(f"检查 MR: {mr['web_url']}")
+            check_conflict_with_master([mr], main_branch)
+
         os.chdir(root_path)
+        # ✅ 如果有多个 MR，再检查 MR 之间冲突
+        if len(mr_list) > 1:
+            print(f"仓库：{repo_url} 有 {len(mr_list)} 个 MR，检测 MR 之间冲突...")
+            os.chdir(local_path)
+            check_conflict(mr_list, main_branch)
+            os.chdir(root_path)
 
     print("====================== git merge end ======================")
 
